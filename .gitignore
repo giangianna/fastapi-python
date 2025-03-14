@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+
+# IDE/editor configuration files
+.vscode/
+.idea/
+*.sublime-workspace
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Logs and debug files
+*.log
+logs/
+debug.log
+
+# Dependency and build artifacts
+*.egg-info/
+dist/
+build/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.test
+.env.production
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Pytest cache
+.pytest_cache/
+
+# Coverage reports
+.coverage
+htmlcov/
+*.cover
+
+# MyPy type checker
+.mypy_cache/
+
+# Database & cache files
+*.sqlite3
+*.db
+*.pkl
+
+# Docker files
+docker-compose.override.yml
+
+# Node.js dependencies (if frontend is included)
+node_modules/
+
+# Local development overrides
+local_settings.py
