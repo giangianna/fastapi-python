@@ -4,13 +4,14 @@ from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from app.core.config import settings
+from app.core.security import decode_access_token
 import time
 
 # Rate limiter sederhana
 rate_limit_store = {}
 
 # Daftar path yang tidak perlu API Gateway Key
-EXCLUDED_PATHS = ["/", "/docs", "/openapi.json", "/favicon.ico", "/redoc"]	 
+EXCLUDED_PATHS = ["/", "/docs", "/openapi.json", "/favicon.ico", "/redoc", "/login"]	 
 
 class APIGateMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -22,6 +23,16 @@ class APIGateMiddleware(BaseHTTPMiddleware):
         gateway_key = request.headers.get("X-API-GATEWAY-KEY")
         if gateway_key != settings.API_GATEWAY_KEY:
             return JSONResponse(status_code=403, content={"detail": "Invalid API Gateway Key"})
+        
+        # 🔑 JWT Authentication
+        token = request.headers.get("Authorization")
+        if not token or not token.startswith("Bearer "):
+            return JSONResponse(status_code=401, content={"detail": "Missing or invalid token"})
+
+        token = token.split("Bearer ")[1]
+        payload = decode_access_token(token)
+        if not payload:
+            return JSONResponse(status_code=401, content={"detail": "Invalid or expired token"})
 
         # 📈 Rate Limiting
         client_ip = request.client.host
