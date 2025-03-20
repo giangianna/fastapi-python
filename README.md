@@ -14,7 +14,7 @@ This project is a FastAPI-based API Gateway that provides authentication, rate l
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/fast_api_python.git
+    git clone https://github.com/giangianna/swa-api-gateway.git
     cd fast_api_python
     ```
 
