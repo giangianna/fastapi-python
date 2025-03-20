@@ -2,46 +2,38 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
-from datetime import timedelta
-from app.core.security import create_access_token
-import bcrypt  # Library untuk hashing password
+from datetime import timedelta, datetime
+from app.core.security import create_access_token, create_refresh_token, verify_password
+from app.core.config import settings
+import bcrypt
+from jose import jwt, JWTError
+from pydantic import BaseModel
 
-# Simulasi database pengguna (seharusnya dari database)
+# Simulasi database pengguna (sebaiknya pakai database nyata)
 FAKE_USERS_DB = {
     "admin": {
         "username": "admin",
-        "hashed_password": bcrypt.hashpw("admin123".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")  # Hash password
+        "hashed_password": bcrypt.hashpw("admin123".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     }
 }
 
+# Simulasi penyimpanan refresh token (HARUS diganti dengan database dalam produksi)
+FAKE_REFRESH_TOKENS = {}
+
 router = APIRouter()
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    Memeriksa apakah password yang dimasukkan sesuai dengan password yang telah di-hash.
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
 
-    :param plain_password: Password yang dimasukkan pengguna
-    :param hashed_password: Password hash yang tersimpan
-    :return: True jika password cocok, False jika tidak
-    """
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
-@router.post("/login", summary="Login untuk mendapatkan JWT Token", tags=["Authentication"])
+@router.post("/login", response_model=TokenResponse, summary="Login untuk mendapatkan JWT Token", tags=["Authentication"])
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """
-    Endpoint untuk mendapatkan JWT access token dengan menggunakan username dan password.
-
-    ### Request:
-    - `username`: Username pengguna
-    - `password`: Password pengguna
-
-    ### Response:
-    - `access_token`: Token yang digunakan untuk autentikasi
-    - `token_type`: Jenis token (bearer)
-
-    ### Keamanan:
-    - Password disimpan dalam bentuk hashed menggunakan bcrypt.
-    - Hashing dilakukan agar password tidak disimpan dalam bentuk plaintext.
+    Endpoint untuk mendapatkan JWT access token dengan username dan password.
     """
 
     username = form_data.username
@@ -49,17 +41,67 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
     # Periksa apakah username ada dalam database
     user = FAKE_USERS_DB.get(username)
-    if not user:
+    if not user or not verify_password(password, user["hashed_password"]):
         raise HTTPException(status_code=400, detail="Invalid username or password")
-
-    # Verifikasi password menggunakan bcrypt
-    if not verify_password(password, user["hashed_password"]):
-        raise HTTPException(status_code=400, detail="Invalid username or password")
-
-    # Buat token akses dengan payload `sub` berisi username
+    
+    # Buat access token & refresh token
     access_token = create_access_token(
-        data={"sub": username},  # Subjek token (pengguna)
-        expires_delta=timedelta(minutes=30)  # Token berlaku selama 30 menit
+        data={"sub": username}, 
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    refresh_token = create_refresh_token(
+        data={"sub": username}, 
+        expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    # Simpan refresh token (sebaiknya di database)
+    FAKE_REFRESH_TOKENS[username] = refresh_token
+
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+@router.post("/refresh", response_model=TokenResponse, summary="Refresh access token menggunakan refresh token", tags=["Authentication"])
+async def refresh_access_token(request: RefreshTokenRequest):
+    """
+    Endpoint untuk memperbarui access token dengan menggunakan refresh token.
+    """
+    refresh_token = request.refresh_token
+    print(f"Received refresh token: {refresh_token}")  # DEBUG
+    
+    try:
+        # Decode refresh token
+        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        username: str = payload.get("sub")
+        exp: int = payload.get("exp")
+
+        print(f"Decoded username from token: {username}, Exp: {exp}")  # DEBUG
+
+        if not username or FAKE_REFRESH_TOKENS.get(username) != refresh_token:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+        # Periksa apakah refresh token telah kedaluwarsa
+        if datetime.utcnow().timestamp() > exp:
+            raise HTTPException(status_code=401, detail="Refresh token expired")
+
+        # Hapus refresh token lama untuk keamanan (opsional)
+        del FAKE_REFRESH_TOKENS[username]
+
+        # Buat access token baru
+        new_access_token = create_access_token(
+            data={"sub": username},
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+
+        # Buat refresh token baru untuk menggantikan yang lama
+        new_refresh_token = create_refresh_token(
+            data={"sub": username},
+            expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        )
+
+        # Simpan refresh token baru di database (simulasi)
+        FAKE_REFRESH_TOKENS[username] = new_refresh_token
+
+        return {"access_token": new_access_token, "refresh_token": new_refresh_token, "token_type": "bearer"}
+    
+    except JWTError as e:
+        print(f"JWT Error: {e}")  # DEBUG
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")

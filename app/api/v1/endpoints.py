@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Security, Depends
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from app.core.security import decode_access_token
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -54,7 +55,7 @@ async def protected_endpoint(
     """
     Mengembalikan response sukses jika API Key dan JWT valid.
     """
-    if api_key != "my-secret-key":
+    if api_key != settings.API_GATEWAY_KEY:
         raise HTTPException(status_code=403, detail="Invalid API Gateway Key")
 
     return {"message": "Access granted to protected endpoint"}
